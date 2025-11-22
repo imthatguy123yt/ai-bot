@@ -1,0 +1,144 @@
+<!--
+github-chatbot.html
+Single-file embeddable chatbot + setup instructions
+
+What this is:
+- A minimal HTML + JS chatbot UI that you can host on GitHub Pages (or any static host).
+- The front-end expects a secure backend endpoint (POST /api/chat) that proxies requests to the AI provider.
+
+Security notes (must-read):
+- Do NOT put your OpenAI API key (or any secret) in client-side code. Keep it on a serverless function or backend and call that from the page.
+- OpenAI and best practices explicitly recommend routing requests through a backend and never embedding keys in browsers. See OpenAI docs for "API key safety" and "production best practices".
+
+Quick flow:
+1) Host this HTML as a GitHub Pages site (e.g. put in repo root as index.html and enable Pages).
+2) Deploy a serverless function that accepts POST /api/chat and forwards to the AI API using your secret key (examples below).
+3) In your GitHub README, link to the GitHub Pages URL and optionally use a small badge or screenshot. GitHub profile README does not allow iframes, so link instead.
+
+Serverless example (Node / Vercel / Netlify functions)
+- Save the following code as api/chat.js (serverless)
+
+// ----- serverless function (Node) -----
+// This is an example using fetch + OpenAI REST API. Replace with whichever provider or SDK you use.
+
+/*
+const fetch = require('node-fetch'); // if needed in your environment
+module.exports = async (req, res) => {
+  if (req.method !== 'POST') return res.status(405).end();
+  try {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'missing message' });
+
+    // IMPORTANT: set OPENAI_API_KEY in your environment vars
+    const apiKey = process.env.OPENAI_API_KEY;
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: message }],
+        max_tokens: 500,
+      }),
+    });
+    const data = await resp.json();
+    // adapt path below depending on API response shape
+    const reply = data?.choices?.[0]?.message?.content ?? JSON.stringify(data);
+    res.json({ reply });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'server error' });
+  }
+};
+*/
+
+/*
+Hosting notes:
+- GitHub Pages: place this file as index.html in a repository, enable Pages in repo settings. GitHub Pages is static only — you still need a separate backend for the API.
+- Serverless options: Vercel, Netlify, Render, Fly, or a small Express/Cloud Run container. Set your OPENAI_API_KEY as an environment variable in the provider UI.
+- If you want users to use their own keys ("bring-your-own-key"), you can let them enter the key and forward it from the client to your serverless function which uses it only for that request — but this is risky and must be clearly documented. Better: keep a single server-side key.
+*/
+
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AI Chatbot (GitHub Pages)</title>
+  <style>
+    :root{font-family:system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial;}
+    body{display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0f172a;color:#e6eef8}
+    .card{width:100%;max-width:720px;background:rgba(255,255,255,0.04);padding:16px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+    h1{font-size:1.1rem;margin:0 0 12px}
+    #chat{height:420px;overflow:auto;padding:12px;border-radius:8px;background:rgba(0,0,0,0.15)}
+    .msg{margin:8px 0;padding:10px;border-radius:8px;max-width:78%}
+    .user{background:rgba(255,255,255,0.08);margin-left:auto}
+    .bot{background:rgba(255,255,255,0.02);margin-right:auto}
+    form{display:flex;gap:8px;margin-top:12px}
+    input[type=text]{flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+    button{padding:10px 14px;border-radius:8px;border:0;background:#2563eb;color:#fff;cursor:pointer}
+    .muted{font-size:0.8rem;opacity:0.8;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>AI Chatbot — hosted on GitHub Pages</h1>
+    <div id="chat" aria-live="polite"></div>
+
+    <form id="frm">
+      <input id="q" type="text" autocomplete="off" placeholder="Ask something..." />
+      <button type="submit">Send</button>
+    </form>
+    <div class="muted">Backend endpoint: <code>POST /api/chat</code> (must be implemented server-side)</div>
+  </div>
+
+  <script>
+    const chatEl = document.getElementById('chat');
+    const form = document.getElementById('frm');
+    const q = document.getElementById('q');
+
+    function addMessage(text, who){
+      const d = document.createElement('div');
+      d.className = 'msg ' + (who==='user' ? 'user' : 'bot');
+      d.textContent = text;
+      chatEl.appendChild(d);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    async function sendMessage(message){
+      addMessage(message, 'user');
+      addMessage('...', 'bot');
+      // adjust URL to your deployed serverless function / proxy
+      try{
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+        });
+        const data = await res.json();
+        // remove the placeholder '...'
+        const dots = chatEl.querySelector('.bot:last-child');
+        if (dots) dots.remove();
+        if (res.ok && data?.reply) addMessage(data.reply, 'bot');
+        else addMessage('Error: '+(data?.error || JSON.stringify(data)), 'bot');
+      } catch(err){
+        const dots = chatEl.querySelector('.bot:last-child');
+        if (dots) dots.remove();
+        addMessage('Network/server error: '+err.message, 'bot');
+      }
+    }
+
+    form.addEventListener('submit', e=>{
+      e.preventDefault();
+      const v = q.value.trim();
+      if(!v) return;
+      q.value = '';
+      sendMessage(v);
+    });
+  </script>
+</body>
+</html>
